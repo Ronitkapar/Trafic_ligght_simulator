@@ -1,0 +1,2664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Raspberry Pi Traffic Light Controller | 3D Interactive Simulation</title>
+  <style>
+    :root {
+      --bg-app: #e7ecf2;
+      --bg-sidebar: #ffffff;
+      --bg-surface: #f4f6f9;
+      --bg-input: #ffffff;
+      --border-subtle: #d5dde7;
+      --text-primary: #141921;
+      --text-secondary: #526071;
+      --text-muted: #768496;
+      --accent-blue: #1d4ed8;
+      --accent-blue-hover: #1e40af;
+      --hud-bg: rgba(255, 255, 255, 0.86);
+      --hud-border: rgba(20, 25, 33, 0.12);
+      --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.12);
+      --red: #e52521;
+      --yellow: #e5a500;
+      --green: #16a34a;
+    }
+
+    body[data-theme="night"] {
+      --bg-app: #0c1118;
+      --bg-sidebar: #131a24;
+      --bg-surface: #1b2432;
+      --bg-input: #101620;
+      --border-subtle: #2a3648;
+      --text-primary: #f1f5f9;
+      --text-secondary: #a4b3c6;
+      --text-muted: #7a8a9e;
+      --accent-blue: #3b82f6;
+      --accent-blue-hover: #2563eb;
+      --hud-bg: rgba(19, 26, 36, 0.86);
+      --hud-border: rgba(148, 163, 184, 0.18);
+      --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg-app);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    .app-shell {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* 3D Viewport */
+    .viewport-pane {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      background: var(--bg-app);
+      overflow: hidden;
+    }
+
+    #scene-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+      cursor: grab;
+    }
+
+    #scene-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* Compact Top-Left HUD */
+    .hud-badge {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      min-width: 248px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-soft);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .hud-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .hud-signal-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hud-dot {
+      width: 13px;
+      height: 13px;
+      border-radius: 999px;
+      background: var(--red);
+      box-shadow: 0 0 10px rgba(229, 37, 33, 0.65);
+      flex-shrink: 0;
+    }
+
+    .hud-phase {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .hud-state-pill {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(100, 116, 139, 0.14);
+      color: var(--text-secondary);
+    }
+
+    .hud-state-pill.is-running {
+      background: rgba(22, 163, 74, 0.16);
+      color: #15803d;
+    }
+
+    body[data-theme="night"] .hud-state-pill.is-running {
+      color: #4ade80;
+    }
+
+    .hud-state-pill.is-paused {
+      background: rgba(234, 179, 8, 0.2);
+      color: #a16207;
+    }
+
+    body[data-theme="night"] .hud-state-pill.is-paused {
+      color: #facc15;
+    }
+
+    .hud-sub-row {
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .hud-progress-track {
+      margin-top: 8px;
+      width: 100%;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+    }
+
+    .hud-progress-fill {
+      height: 100%;
+      width: 100%;
+      border-radius: 999px;
+      background: var(--red);
+      transition: width 180ms ease-out, background-color 180ms ease;
+    }
+
+    /* Bottom-Center Camera Toolbar */
+    .camera-toolbar {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-radius: 12px;
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-soft);
+      z-index: 10;
+      max-width: calc(100% - 24px);
+    }
+
+    .cam-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+      white-space: nowrap;
+    }
+
+    .cam-btn:hover {
+      background: rgba(148, 163, 184, 0.16);
+      color: var(--text-primary);
+    }
+
+    .cam-btn.is-active {
+      background: var(--accent-blue);
+      color: #ffffff;
+    }
+
+    .cam-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--border-subtle);
+      margin: 0 2px;
+    }
+
+    /* Floating 3D Pin Tooltip */
+    .pin-tooltip {
+      position: absolute;
+      pointer-events: none;
+      display: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.94);
+      color: #f8fafc;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+      font-size: 12px;
+      line-height: 1.4;
+      z-index: 20;
+      min-width: 148px;
+    }
+
+    .pin-tooltip-title {
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .pin-tooltip-meta {
+      color: #cbd5e1;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .orbit-hint {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: var(--hud-bg);
+      border: 1px solid var(--hud-border);
+      font-size: 11px;
+      color: var(--text-secondary);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* WebGL / Load Error Overlay */
+    .error-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.85);
+      color: #f8fafc;
+      z-index: 50;
+      text-align: center;
+    }
+
+    .error-card {
+      max-width: 440px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 22px;
+    }
+
+    .error-card h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+
+    .error-card p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #cbd5e1;
+    }
+
+    /* Right Inspector Sidebar */
+    .sidebar {
+      width: 372px;
+      flex-shrink: 0;
+      height: 100%;
+      background: var(--bg-sidebar);
+      border-left: 1px solid var(--border-subtle);
+      overflow-y: auto;
+      padding: 18px 18px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .sidebar-header h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .sidebar-header p {
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 13px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .panel-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .mini-link-btn {
+      border: none;
+      background: transparent;
+      color: var(--accent-blue);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+
+    .mini-link-btn:hover {
+      text-decoration: underline;
+    }
+
+    /* Signal Control Section */
+    .signal-readout {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .signal-status-text {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--red);
+    }
+
+    .signal-countdown-text {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sequence-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .seq-step {
+      padding: 2px 6px;
+      border-radius: 5px;
+      transition: background 150ms ease, color 150ms ease;
+    }
+
+    .seq-step.is-active-RED {
+      background: rgba(229, 37, 33, 0.14);
+      color: var(--red);
+    }
+
+    .seq-step.is-active-GREEN {
+      background: rgba(22, 163, 74, 0.14);
+      color: var(--green);
+    }
+
+    .seq-step.is-active-YELLOW {
+      background: rgba(229, 165, 0, 0.18);
+      color: #b47d00;
+    }
+
+    body[data-theme="night"] .seq-step.is-active-YELLOW {
+      color: #facc15;
+    }
+
+    .control-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .ctrl-btn {
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-input);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 150ms ease, opacity 150ms ease, transform 80ms ease;
+    }
+
+    .ctrl-btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .ctrl-btn.primary {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #ffffff;
+    }
+
+    .ctrl-btn.primary:hover:not(:disabled) {
+      background: var(--accent-blue-hover);
+    }
+
+    .ctrl-btn:hover:not(:disabled):not(.primary) {
+      background: rgba(148, 163, 184, 0.12);
+    }
+
+    .ctrl-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* GPIO Mapping Rows */
+    .gpio-row {
+      display: grid;
+      grid-template-columns: 76px 1fr auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .channel-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .channel-led {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #64748b;
+      transition: background 150ms ease, box-shadow 150ms ease;
+    }
+
+    .channel-led.on-RED {
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+    }
+
+    .channel-led.on-YELLOW {
+      background: var(--yellow);
+      box-shadow: 0 0 8px var(--yellow);
+    }
+
+    .channel-led.on-GREEN {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    select.pin-select,
+    input.dur-input {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 7px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-input);
+      color: var(--text-primary);
+    }
+
+    .logic-pill {
+      font-size: 10.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      padding: 3px 7px;
+      border-radius: 6px;
+      min-width: 68px;
+      text-align: center;
+      background: rgba(100, 116, 139, 0.14);
+      color: var(--text-secondary);
+    }
+
+    .logic-pill.is-high {
+      background: rgba(22, 163, 74, 0.16);
+      color: #15803d;
+    }
+
+    body[data-theme="night"] .logic-pill.is-high {
+      color: #4ade80;
+    }
+
+    .gnd-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      padding-top: 2px;
+      border-top: 1px dashed var(--border-subtle);
+    }
+
+    .swap-note {
+      font-size: 11px;
+      color: var(--accent-blue);
+      min-height: 15px;
+    }
+
+    /* Interactive 2x20 Mini GPIO Header Diagram */
+    .gpio-diagram-wrap {
+      background: #133822;
+      border: 1px solid #1d5734;
+      border-radius: 9px;
+      padding: 8px 8px 6px;
+      color: #e2e8f0;
+    }
+
+    .gpio-diagram-caption {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #a7f3d0;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .gpio-grid {
+      display: grid;
+      grid-template-columns: repeat(20, 1fr);
+      gap: 2px;
+    }
+
+    .mini-pin {
+      position: relative;
+      height: 15px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: #233029;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: transform 100ms ease, border-color 120ms ease;
+    }
+
+    .mini-pin:hover {
+      transform: scale(1.18);
+      border-color: #ffffff;
+      z-index: 2;
+    }
+
+    .mini-pin::after {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: #d4af37;
+    }
+
+    .mini-pin.pin-power-5v::after {
+      background: #fb7185;
+    }
+
+    .mini-pin.pin-power-3v3::after {
+      background: #f59e0b;
+    }
+
+    .mini-pin.pin-gnd::after {
+      background: #64748b;
+    }
+
+    .mini-pin.pin-mapped-GND {
+      background: #334155;
+      border-color: #94a3b8;
+    }
+
+    .mini-pin.pin-mapped-GND::after {
+      background: #e2e8f0;
+    }
+
+    .mini-pin.pin-mapped-RED {
+      background: rgba(229, 37, 33, 0.35);
+      border-color: #f87171;
+    }
+
+    .mini-pin.pin-mapped-RED.is-high {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+
+    .mini-pin.pin-mapped-YELLOW {
+      background: rgba(229, 165, 0, 0.35);
+      border-color: #facc15;
+    }
+
+    .mini-pin.pin-mapped-YELLOW.is-high {
+      background: #eab308;
+      box-shadow: 0 0 8px #facc15;
+    }
+
+    .mini-pin.pin-mapped-GREEN {
+      background: rgba(22, 163, 74, 0.35);
+      border-color: #4ade80;
+    }
+
+    .mini-pin.pin-mapped-GREEN.is-high {
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+
+    .mini-pin-legend {
+      margin-top: 6px;
+      font-size: 10.5px;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    /* Customization Controls */
+    .duration-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .segmented-group {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .segmented-group.two-col {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .seg-btn {
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-input);
+      color: var(--text-secondary);
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 6px 6px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+
+    .seg-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .seg-btn.is-active {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #ffffff;
+    }
+
+    .scope-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    @media (max-width: 960px) {
+      html,
+      body {
+        overflow: auto;
+      }
+
+      .app-shell {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+      }
+
+      .viewport-pane {
+        height: 58vh;
+        min-height: 360px;
+      }
+
+      .sidebar {
+        width: 100%;
+        height: auto;
+        border-left: none;
+        border-top: 1px solid var(--border-subtle);
+        overflow-y: visible;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body data-theme="daylight">
+  <div class="app-shell">
+    <main class="viewport-pane" id="viewport-pane">
+      <canvas id="scene-canvas" aria-label="Interactive 3D Raspberry Pi and Traffic Light Simulation"></canvas>
+
+      <div class="hud-badge" id="hud-badge">
+        <div class="hud-top-row">
+          <div class="hud-signal-group">
+            <span class="hud-dot" id="hud-dot"></span>
+            <span class="hud-phase" id="hud-phase">RED – STOP</span>
+          </div>
+          <span class="hud-state-pill" id="hud-state-pill">Ready</span>
+        </div>
+        <div class="hud-sub-row">
+          <span id="hud-countdown">5 seconds remaining</span>
+          <span id="hud-active-pin">GPIO 17 · Pin 11</span>
+        </div>
+        <div class="hud-progress-track">
+          <div class="hud-progress-fill" id="hud-progress-fill"></div>
+        </div>
+      </div>
+
+      <div class="orbit-hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+
+      <div class="camera-toolbar" role="toolbar" aria-label="3D Camera Controls">
+        <button type="button" class="cam-btn is-active" data-cam="overview">Overview</button>
+        <button type="button" class="cam-btn" data-cam="pi">Pi GPIO</button>
+        <button type="button" class="cam-btn" data-cam="light">Traffic Light</button>
+        <button type="button" class="cam-btn" data-cam="top">Top Wiring</button>
+        <span class="cam-divider"></span>
+        <button type="button" class="cam-btn" id="btn-auto-orbit" aria-pressed="false">Auto-Orbit</button>
+        <button type="button" class="cam-btn" id="btn-reset-view">Reset View</button>
+      </div>
+
+      <div class="pin-tooltip" id="pin-tooltip">
+        <div class="pin-tooltip-title">
+          <span id="tt-pin-label">Pin 11</span>
+          <span id="tt-pin-bcm">GPIO 17</span>
+        </div>
+        <div class="pin-tooltip-meta" id="tt-pin-role">Mapped: RED · LOW (0.0V)</div>
+      </div>
+
+      <div class="error-overlay" id="error-overlay">
+        <div class="error-card">
+          <h2>3D WebGL View Unavailable</h2>
+          <p id="error-message">
+            Unable to initialize the Three.js WebGL scene. Ensure WebGL is enabled and you have internet access to load Three.js.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <aside class="sidebar">
+      <header class="sidebar-header">
+        <h1>Raspberry Pi Traffic Light 3D</h1>
+        <p>Interactive WebGL controller &amp; virtual GPIO bench</p>
+      </header>
+
+      <section class="panel" aria-label="Signal Controls">
+        <div class="panel-header">
+          <span class="panel-title">Signal State &amp; Controls</span>
+          <span class="hud-state-pill" id="sidebar-state-pill">Ready</span>
+        </div>
+
+        <div class="signal-readout">
+          <span class="signal-status-text" id="sidebar-status">RED – STOP</span>
+          <span class="signal-countdown-text" id="sidebar-timer">5 seconds remaining</span>
+        </div>
+
+        <div class="sequence-strip" aria-label="Signal Sequence">
+          <span class="seq-step is-active-RED" id="seq-RED">RED</span>
+          <span>→</span>
+          <span class="seq-step" id="seq-GREEN">GREEN</span>
+          <span>→</span>
+          <span class="seq-step" id="seq-YELLOW">YELLOW</span>
+          <span>→</span>
+          <span>RED</span>
+        </div>
+
+        <div class="control-buttons">
+          <button type="button" class="ctrl-btn primary" id="btn-start">Start</button>
+          <button type="button" class="ctrl-btn" id="btn-pause" disabled>Pause</button>
+          <button type="button" class="ctrl-btn" id="btn-reset">Reset</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Virtual GPIO Pin Mapping">
+        <div class="panel-header">
+          <span class="panel-title">Virtual GPIO Pin Mapping</span>
+          <button type="button" class="mini-link-btn" id="btn-reset-pins">Reset (17/27/22)</button>
+        </div>
+
+        <div class="gpio-row">
+          <span class="channel-tag"><span class="channel-led" id="led-RED"></span>RED</span>
+          <select class="pin-select" id="select-pin-RED" aria-label="RED GPIO Pin"></select>
+          <span class="logic-pill" id="logic-RED">LOW 0.0V</span>
+        </div>
+
+        <div class="gpio-row">
+          <span class="channel-tag"><span class="channel-led" id="led-YELLOW"></span>YELLOW</span>
+          <select class="pin-select" id="select-pin-YELLOW" aria-label="YELLOW GPIO Pin"></select>
+          <span class="logic-pill" id="logic-YELLOW">LOW 0.0V</span>
+        </div>
+
+        <div class="gpio-row">
+          <span class="channel-tag"><span class="channel-led" id="led-GREEN"></span>GREEN</span>
+          <select class="pin-select" id="select-pin-GREEN" aria-label="GREEN GPIO Pin"></select>
+          <span class="logic-pill" id="logic-GREEN">LOW 0.0V</span>
+        </div>
+
+        <div class="gnd-row">
+          <span>Common Ground Return</span>
+          <strong>Pin 6 · GND (0.0V)</strong>
+        </div>
+
+        <div class="swap-note" id="pin-status-note">Hover any pin on the 3D Pi header or diagram below.</div>
+
+        <div class="gpio-diagram-wrap">
+          <div class="gpio-diagram-caption">
+            <span>40-Pin GPIO Header (Top Row: 2–40)</span>
+            <span id="diagram-hover-info">J8</span>
+          </div>
+          <div class="gpio-grid" id="gpio-mini-grid"></div>
+          <div class="mini-pin-legend">
+            <span>Bottom Row: 1–39</span>
+            <span>Click a GPIO pin to view details</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Traffic Light Customization">
+        <div class="panel-header">
+          <span class="panel-title">Traffic Light Customization</span>
+          <button type="button" class="mini-link-btn" id="btn-reset-timings">Defaults (5/5/2)</button>
+        </div>
+
+        <div>
+          <span class="field-label">Signal Durations (seconds, 1–60)</span>
+          <div class="duration-grid">
+            <div>
+              <label class="field-label" for="input-dur-RED">Red</label>
+              <input type="number" class="dur-input" id="input-dur-RED" min="1" max="60" step="1" value="5" />
+            </div>
+            <div>
+              <label class="field-label" for="input-dur-GREEN">Green</label>
+              <input type="number" class="dur-input" id="input-dur-GREEN" min="1" max="60" step="1" value="5" />
+            </div>
+            <div>
+              <label class="field-label" for="input-dur-YELLOW">Yellow</label>
+              <input type="number" class="dur-input" id="input-dur-YELLOW" min="1" max="60" step="1" value="2" />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span class="field-label">Housing Finish</span>
+          <div class="segmented-group" id="group-finish">
+            <button type="button" class="seg-btn is-active" data-finish="dark">Cast Dark</button>
+            <button type="button" class="seg-btn" data-finish="yellow">Highway Yellow</button>
+            <button type="button" class="seg-btn" data-finish="silver">Brushed Silver</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="field-label">Lens Glow Intensity</span>
+          <div class="segmented-group" id="group-glow">
+            <button type="button" class="seg-btn" data-glow="subtle">Subtle</button>
+            <button type="button" class="seg-btn is-active" data-glow="standard">Standard</button>
+            <button type="button" class="seg-btn" data-glow="vivid">Vivid</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="field-label">Bench Lighting</span>
+          <div class="segmented-group two-col" id="group-theme">
+            <button type="button" class="seg-btn is-active" data-theme="daylight">Studio Daylight</button>
+            <button type="button" class="seg-btn" data-theme="night">Lab Night</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="scope-note">
+        Software simulation modeling Raspberry Pi 4 GPIO output logic and 3-phase traffic control in WebGL. No physical hardware required.
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    window.addEventListener("error", (event) => {
+      const overlay = document.getElementById("error-overlay");
+      const msg = document.getElementById("error-message");
+      if (overlay && overlay.style.display !== "flex" && event.message) {
+        if (event.message.toLowerCase().includes("three") || event.message.toLowerCase().includes("webgl")) {
+          overlay.style.display = "flex";
+          if (msg) msg.textContent = event.message;
+        }
+      }
+    });
+  </script>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+    // =========================================================================
+    // 1. Official Raspberry Pi 4 Model B 40-Pin (J8) Pinout Table
+    // =========================================================================
+    const PI_40_PINOUT = [
+      { pin: 1, label: "3.3V", bcm: null, kind: "3V3" },
+      { pin: 2, label: "5V", bcm: null, kind: "5V" },
+      { pin: 3, label: "GPIO 2 (SDA1)", bcm: 2, kind: "BUS" },
+      { pin: 4, label: "5V", bcm: null, kind: "5V" },
+      { pin: 5, label: "GPIO 3 (SCL1)", bcm: 3, kind: "BUS" },
+      { pin: 6, label: "GND", bcm: null, kind: "GND" },
+      { pin: 7, label: "GPIO 4", bcm: 4, kind: "GPIO" },
+      { pin: 8, label: "GPIO 14 (TXD)", bcm: 14, kind: "BUS" },
+      { pin: 9, label: "GND", bcm: null, kind: "GND" },
+      { pin: 10, label: "GPIO 15 (RXD)", bcm: 15, kind: "BUS" },
+      { pin: 11, label: "GPIO 17", bcm: 17, kind: "GPIO" },
+      { pin: 12, label: "GPIO 18", bcm: 18, kind: "GPIO" },
+      { pin: 13, label: "GPIO 27", bcm: 27, kind: "GPIO" },
+      { pin: 14, label: "GND", bcm: null, kind: "GND" },
+      { pin: 15, label: "GPIO 22", bcm: 22, kind: "GPIO" },
+      { pin: 16, label: "GPIO 23", bcm: 23, kind: "GPIO" },
+      { pin: 17, label: "3.3V", bcm: null, kind: "3V3" },
+      { pin: 18, label: "GPIO 24", bcm: 24, kind: "GPIO" },
+      { pin: 19, label: "GPIO 10 (MOSI)", bcm: 10, kind: "BUS" },
+      { pin: 20, label: "GND", bcm: null, kind: "GND" },
+      { pin: 21, label: "GPIO 9 (MISO)", bcm: 9, kind: "BUS" },
+      { pin: 22, label: "GPIO 25", bcm: 25, kind: "GPIO" },
+      { pin: 23, label: "GPIO 11 (SCLK)", bcm: 11, kind: "BUS" },
+      { pin: 24, label: "GPIO 8 (CE0)", bcm: 8, kind: "BUS" },
+      { pin: 25, label: "GND", bcm: null, kind: "GND" },
+      { pin: 26, label: "GPIO 7 (CE1)", bcm: 7, kind: "BUS" },
+      { pin: 27, label: "ID_SD (GPIO 0)", bcm: 0, kind: "RESERVED" },
+      { pin: 28, label: "ID_SC (GPIO 1)", bcm: 1, kind: "RESERVED" },
+      { pin: 29, label: "GPIO 5", bcm: 5, kind: "GPIO" },
+      { pin: 30, label: "GND", bcm: null, kind: "GND" },
+      { pin: 31, label: "GPIO 6", bcm: 6, kind: "GPIO" },
+      { pin: 32, label: "GPIO 12", bcm: 12, kind: "GPIO" },
+      { pin: 33, label: "GPIO 13", bcm: 13, kind: "GPIO" },
+      { pin: 34, label: "GND", bcm: null, kind: "GND" },
+      { pin: 35, label: "GPIO 19", bcm: 19, kind: "GPIO" },
+      { pin: 36, label: "GPIO 16", bcm: 16, kind: "GPIO" },
+      { pin: 37, label: "GPIO 26", bcm: 26, kind: "GPIO" },
+      { pin: 38, label: "GPIO 20", bcm: 20, kind: "GPIO" },
+      { pin: 39, label: "GND", bcm: null, kind: "GND" },
+      { pin: 40, label: "GPIO 21", bcm: 21, kind: "GPIO" },
+    ];
+
+    const USABLE_GPIO_PINS = PI_40_PINOUT.filter((entry) => entry.kind === "GPIO");
+    const PIN_BY_BCM = new Map(
+      PI_40_PINOUT.filter((e) => e.bcm !== null).map((e) => [e.bcm, e])
+    );
+    const PIN_BY_NUMBER = new Map(PI_40_PINOUT.map((e) => [e.pin, e]));
+    const GND_PIN_NUMBER = 6;
+
+    // =========================================================================
+    // 2. Simulation State & Configuration
+    // =========================================================================
+    const SIGNAL_ORDER = ["RED", "GREEN", "YELLOW"];
+    const SIGNAL_META = {
+      RED: { message: "STOP", colorHex: "#e52521", colorInt: 0xe52521, offInt: 0x3b1212 },
+      GREEN: { message: "GO", colorHex: "#16a34a", colorInt: 0x16a34a, offInt: 0x11331e },
+      YELLOW: { message: "GET READY", colorHex: "#f2b705", colorInt: 0xf2b705, offInt: 0x3d3010 },
+    };
+
+    const HOUSING_FINISHES = {
+      dark: { color: 0x1e232a, metalness: 0.45, roughness: 0.55 },
+      yellow: { color: 0xd99b08, metalness: 0.25, roughness: 0.42 },
+      silver: { color: 0x9aa4b2, metalness: 0.78, roughness: 0.34 },
+    };
+
+    const GLOW_PRESETS = {
+      subtle: { emissive: 2.0, haloScale: 1.0, pointIntensity: 6.5 },
+      standard: { emissive: 3.4, haloScale: 1.25, pointIntensity: 13.0 },
+      vivid: { emissive: 5.2, haloScale: 1.5, pointIntensity: 22.0 },
+    };
+
+    const THEME_PRESETS = {
+      daylight: {
+        bg: 0xe5ebf2,
+        fog: 0xe5ebf2,
+        ambient: 0.75,
+        keyIntensity: 2.2,
+        fillIntensity: 0.9,
+        envIntensity: 0.85,
+        exposure: 1.05,
+      },
+      night: {
+        bg: 0x0b1017,
+        fog: 0x0b1017,
+        ambient: 0.22,
+        keyIntensity: 0.7,
+        fillIntensity: 0.35,
+        envIntensity: 0.28,
+        exposure: 0.95,
+      },
+    };
+
+    const state = {
+      durations: { RED: 5, GREEN: 5, YELLOW: 2 },
+      phaseIndex: 0,
+      secondsLeft: 5,
+      running: false,
+      hasStarted: false,
+      tickTimerId: null,
+      pinMapping: { RED: 17, YELLOW: 27, GREEN: 22 },
+      finish: "dark",
+      glow: "standard",
+      theme: "daylight",
+      autoOrbit: false,
+      actPulseUntil: 0,
+      lampSettleProgress: 1.0,
+      lastPhaseChangeAt: 0,
+    };
+
+    // =========================================================================
+    // 3. Procedural Textures for Photorealism
+    // =========================================================================
+    function createBenchTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#1d2633";
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Subtle ESD mat grain
+      for (let i = 0; i < 4500; i += 1) {
+        const x = (i * 73) % 512;
+        const y = (i * 139) % 512;
+        ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.05)";
+        ctx.fillRect(x, y, 2, 2);
+      }
+
+      // Clean 1 cm grid lines
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.14)";
+      ctx.lineWidth = 1;
+      for (let p = 0; p <= 512; p += 64) {
+        ctx.beginPath();
+        ctx.moveTo(p + 0.5, 0);
+        ctx.lineTo(p + 0.5, 512);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, p + 0.5);
+        ctx.lineTo(512, p + 0.5);
+        ctx.stroke();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(8, 8);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createPiPcbTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1024;
+      canvas.height = 676;
+      const ctx = canvas.getContext("2d");
+
+      // Classic Raspberry Pi emerald solder mask
+      ctx.fillStyle = "#156a38";
+      ctx.fillRect(0, 0, 1024, 676);
+
+      // Copper trace aesthetics under solder mask
+      ctx.strokeStyle = "#1f8248";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 24; i += 1) {
+        const startX = 160 + i * 26;
+        ctx.beginPath();
+        ctx.moveTo(startX, 95);
+        ctx.lineTo(startX, 170 + (i % 5) * 14);
+        ctx.lineTo(startX - 45, 250 + (i % 4) * 16);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 16; i += 1) {
+        const startY = 230 + i * 22;
+        ctx.beginPath();
+        ctx.moveTo(430, startY);
+        ctx.lineTo(660, startY);
+        ctx.lineTo(720, startY + 28);
+        ctx.stroke();
+      }
+
+      // Gold mounting hole rings (4 corners)
+      const holes = [
+        [42, 42],
+        [740, 42],
+        [42, 634],
+        [740, 634],
+      ];
+      for (const [hx, hy] of holes) {
+        ctx.fillStyle = "#d9b44a";
+        ctx.beginPath();
+        ctx.arc(hx, hy, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#0e1419";
+        ctx.beginPath();
+        ctx.arc(hx, hy, 15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Silkscreen labels
+      ctx.fillStyle = "rgba(248, 250, 252, 0.92)";
+      ctx.font = "bold 24px sans-serif";
+      ctx.fillText("Raspberry Pi 4 Model B", 340, 560);
+
+      ctx.font = "bold 17px monospace";
+      ctx.fillText("GPIO (J8)", 350, 128);
+      ctx.fillText("DISPLAY", 52, 370);
+      ctx.fillText("CAMERA", 482, 520);
+      ctx.fillText("PWR", 36, 525);
+      ctx.fillText("ACT", 36, 560);
+      ctx.fillText("HDMI0", 232, 650);
+      ctx.fillText("HDMI1", 376, 650);
+      ctx.fillText("USB-C", 82, 650);
+      ctx.fillText("A/V", 575, 650);
+
+      // Pin 1 square pad marker
+      ctx.strokeStyle = "#f8fafc";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(102, 74, 22, 22);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createChipLabelTexture(title, subtitle, bgHex = "#9ca3af", fgHex = "#1f2937") {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = bgHex;
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = 6;
+      ctx.strokeRect(10, 10, 236, 236);
+
+      ctx.fillStyle = fgHex;
+      ctx.textAlign = "center";
+      ctx.font = "bold 26px sans-serif";
+      ctx.fillText(title, 128, 112);
+      ctx.font = "bold 22px monospace";
+      ctx.fillText(subtitle, 128, 154);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createFresnelLensTexture(hexColor) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+
+      ctx.fillStyle = hexColor;
+      ctx.fillRect(0, 0, 256, 256);
+
+      // Subtle LED honeycomb dots
+      ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+      for (let y = 16; y < 256; y += 22) {
+        for (let x = 16; x < 256; x += 22) {
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Concentric Fresnel rings
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.22)";
+      ctx.lineWidth = 3;
+      for (let r = 24; r < 126; r += 16) {
+        ctx.beginPath();
+        ctx.arc(128, 128, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createHaloTexture(rgbCss) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      const grad = ctx.createRadialGradient(128, 128, 10, 128, 128, 128);
+      grad.addColorStop(0, `rgba(${rgbCss}, 0.92)`);
+      grad.addColorStop(0.38, `rgba(${rgbCss}, 0.42)`);
+      grad.addColorStop(1, `rgba(${rgbCss}, 0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 256, 256);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function createTerminalSilkscreenTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 512;
+      canvas.height = 192;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#17202b";
+      ctx.fillRect(0, 0, 512, 192);
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(4, 4, 504, 184);
+
+      const labels = [
+        { text: "RED", color: "#f87171", x: 76 },
+        { text: "YEL", color: "#facc15", x: 196 },
+        { text: "GRN", color: "#4ade80", x: 316 },
+        { text: "GND", color: "#cbd5e1", x: 436 },
+      ];
+      ctx.textAlign = "center";
+      ctx.font = "bold 28px monospace";
+      for (const item of labels) {
+        ctx.fillStyle = item.color;
+        ctx.fillText(item.text, item.x, 152);
+      }
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 18px sans-serif";
+      ctx.fillText("220Ω CURRENT-LIMIT TERMINAL", 256, 36);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    // =========================================================================
+    // 4. Three.js Scene Setup
+    // =========================================================================
+    const canvasEl = document.getElementById("scene-canvas");
+    const viewportPane = document.getElementById("viewport-pane");
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas: canvasEl,
+        antialias: true,
+        powerPreference: "high-performance",
+      });
+    } catch (err) {
+      document.getElementById("error-overlay").style.display = "flex";
+      document.getElementById("error-message").textContent =
+        "WebGL initialization failed: " + (err?.message || "Unknown WebGL error.");
+      throw err;
+    }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(THEME_PRESETS.daylight.bg);
+    scene.fog = new THREE.Fog(THEME_PRESETS.daylight.fog, 28, 72);
+
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    const roomEnvTexture = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = roomEnvTexture;
+    scene.environmentIntensity = THEME_PRESETS.daylight.envIntensity;
+
+    const camera = new THREE.PerspectiveCamera(44, 1.4, 0.1, 140);
+    camera.position.set(-0.8, 10.6, 21.8);
+
+    const controls = new OrbitControls(camera, canvasEl);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.minDistance = 3.2;
+    controls.maxDistance = 36;
+    controls.maxPolarAngle = Math.PI * 0.485;
+    controls.target.set(-1.0, 3.8, 0.0);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, THEME_PRESETS.daylight.ambient);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0xfffaf0, THEME_PRESETS.daylight.keyIntensity);
+    keyLight.position.set(8, 16, 11);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.camera.near = 2;
+    keyLight.shadow.camera.far = 42;
+    keyLight.shadow.camera.left = -12;
+    keyLight.shadow.camera.right = 12;
+    keyLight.shadow.camera.top = 12;
+    keyLight.shadow.camera.bottom = -12;
+    keyLight.shadow.bias = -0.0005;
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0xcbe1ff, THEME_PRESETS.daylight.fillIntensity);
+    fillLight.position.set(-10, 7, -8);
+    scene.add(fillLight);
+
+    // Workbench ESD Mat
+    const benchMat = new THREE.MeshStandardMaterial({
+      map: createBenchTexture(),
+      roughness: 0.88,
+      metalness: 0.04,
+    });
+    const benchMesh = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), benchMat);
+    benchMesh.rotation.x = -Math.PI / 2;
+    benchMesh.receiveShadow = true;
+    scene.add(benchMesh);
+
+    const matPadMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(15.6, 0.08, 9.6),
+      new THREE.MeshStandardMaterial({
+        map: createBenchTexture(),
+        roughness: 0.85,
+        metalness: 0.05,
+      })
+    );
+    matPadMesh.position.set(0.25, 0.04, 0.1);
+    matPadMesh.receiveShadow = true;
+    scene.add(matPadMesh);
+
+    // =========================================================================
+    // 5. Build 3D Raspberry Pi 4 Model B
+    // =========================================================================
+    function createRoundedRectShape(w, h, r) {
+      const shape = new THREE.Shape();
+      const hw = w / 2;
+      const hh = h / 2;
+      shape.moveTo(-hw + r, -hh);
+      shape.lineTo(hw - r, -hh);
+      shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+      shape.lineTo(hw, hh - r);
+      shape.quadraticCurveTo(hw, hh, hw - r, hh);
+      shape.lineTo(-hw + r, hh);
+      shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+      shape.lineTo(-hw, -hh + r);
+      shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+      return shape;
+    }
+
+    const piGroup = new THREE.Group();
+    piGroup.position.set(-2.9, 0.08, 0.25);
+    scene.add(piGroup);
+
+    const PI_W = 8.5;
+    const PI_H = 5.6;
+    const PCB_THICKNESS = 0.16;
+    const STANDOFF_H = 0.44;
+    const PCB_TOP_Y = STANDOFF_H + PCB_THICKNESS;
+
+    // 4 Brass Hex Standoffs + Screws
+    const brassMat = new THREE.MeshStandardMaterial({
+      color: 0xd4a93a,
+      metalness: 0.88,
+      roughness: 0.26,
+    });
+    const steelMat = new THREE.MeshStandardMaterial({
+      color: 0xcbd5e1,
+      metalness: 0.9,
+      roughness: 0.22,
+    });
+    const mountingOffsets = [
+      [-3.9, -2.45],
+      [1.9, -2.45],
+      [-3.9, 2.45],
+      [1.9, 2.45],
+    ];
+    for (const [mx, mz] of mountingOffsets) {
+      const standoff = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.16, STANDOFF_H, 6),
+        brassMat
+      );
+      standoff.position.set(mx, STANDOFF_H / 2, mz);
+      standoff.castShadow = true;
+      piGroup.add(standoff);
+
+      const screwHead = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.15, 0.08, 12),
+        steelMat
+      );
+      screwHead.position.set(mx, PCB_TOP_Y + 0.04, mz);
+      piGroup.add(screwHead);
+    }
+
+    // Main PCB Extrusion (rotated so shape X->X, shape Y->-Z, extrude->+Y)
+    const pcbGeo = new THREE.ExtrudeGeometry(createRoundedRectShape(PI_W, PI_H, 0.3), {
+      depth: PCB_THICKNESS,
+      bevelEnabled: false,
+    });
+    pcbGeo.rotateX(-Math.PI / 2);
+
+    // Map top UVs cleanly to [0..1]
+    const posAttr = pcbGeo.attributes.position;
+    const uvAttr = pcbGeo.attributes.uv;
+    for (let i = 0; i < posAttr.count; i += 1) {
+      const px = posAttr.getX(i);
+      const pz = posAttr.getZ(i);
+      uvAttr.setXY(i, (px + PI_W / 2) / PI_W, 1 - (pz + PI_H / 2) / PI_H);
+    }
+    uvAttr.needsUpdate = true;
+
+    const pcbTopMat = new THREE.MeshStandardMaterial({
+      map: createPiPcbTexture(),
+      roughness: 0.42,
+      metalness: 0.12,
+    });
+    const pcbSideMat = new THREE.MeshStandardMaterial({
+      color: 0x0f512a,
+      roughness: 0.6,
+      metalness: 0.05,
+    });
+    const pcbMesh = new THREE.Mesh(pcbGeo, [pcbTopMat, pcbSideMat]);
+    pcbMesh.position.y = STANDOFF_H;
+    pcbMesh.castShadow = true;
+    pcbMesh.receiveShadow = true;
+    piGroup.add(pcbMesh);
+
+    // Broadcom BCM2711 SoC
+    const socMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 0.24, 1.5),
+      new THREE.MeshStandardMaterial({
+        map: createChipLabelTexture("BROADCOM", "BCM2711", "#b0b8c4", "#1f2937"),
+        metalness: 0.78,
+        roughness: 0.28,
+      })
+    );
+    socMesh.position.set(-1.35, PCB_TOP_Y + 0.12, 0.15);
+    socMesh.castShadow = true;
+    piGroup.add(socMesh);
+
+    // LPDDR4 RAM IC
+    const ramMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1.0, 0.16, 1.4),
+      new THREE.MeshStandardMaterial({
+        map: createChipLabelTexture("LPDDR4", "4GB RAM", "#1c2026", "#cbd5e1"),
+        roughness: 0.55,
+        metalness: 0.12,
+      })
+    );
+    ramMesh.position.set(0.35, PCB_TOP_Y + 0.08, 0.15);
+    ramMesh.castShadow = true;
+    piGroup.add(ramMesh);
+
+    // VL805 USB 3.0 Controller IC
+    const usbCtrlMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.85, 0.12, 0.85),
+      new THREE.MeshStandardMaterial({ color: 0x1a1e24, roughness: 0.55, metalness: 0.1 })
+    );
+    usbCtrlMesh.position.set(1.9, PCB_TOP_Y + 0.06, -0.35);
+    piGroup.add(usbCtrlMesh);
+
+    // Wireless / Bluetooth Metallic Shield Can
+    const wifiCan = new THREE.Mesh(
+      new THREE.BoxGeometry(1.3, 0.22, 1.05),
+      new THREE.MeshStandardMaterial({
+        map: createChipLabelTexture("WiFi / BT", "2.4 / 5 GHz", "#c8d0da", "#1f2937"),
+        metalness: 0.88,
+        roughness: 0.24,
+      })
+    );
+    wifiCan.position.set(-2.95, PCB_TOP_Y + 0.11, -1.05);
+    wifiCan.castShadow = true;
+    piGroup.add(wifiCan);
+
+    // Port Materials
+    const portMetalMat = new THREE.MeshStandardMaterial({
+      color: 0xc2cad4,
+      metalness: 0.88,
+      roughness: 0.24,
+    });
+    const darkInteriorMat = new THREE.MeshStandardMaterial({
+      color: 0x0c0f14,
+      roughness: 0.85,
+    });
+
+    // Gigabit Ethernet RJ45 Cage (+X top-right corner)
+    const ethGroup = new THREE.Group();
+    ethGroup.position.set(3.45, PCB_TOP_Y + 0.675, -1.65);
+    const ethBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.35, 1.6), portMetalMat);
+    ethBody.castShadow = true;
+    ethGroup.add(ethBody);
+    const ethCavity = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.9, 1.2), darkInteriorMat);
+    ethCavity.position.set(1.02, -0.05, 0);
+    ethGroup.add(ethCavity);
+    piGroup.add(ethGroup);
+
+    // Dual USB 3.0 & Dual USB 2.0 Cages (+X edge)
+    function createUsbStack(zPos, tongueColor) {
+      const g = new THREE.Group();
+      g.position.set(3.6, PCB_TOP_Y + 0.78, zPos);
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.56, 1.35), portMetalMat);
+      shell.castShadow = true;
+      g.add(shell);
+      const tongueMat = new THREE.MeshStandardMaterial({ color: tongueColor, roughness: 0.45 });
+      for (const yOff of [-0.36, 0.36]) {
+        const cav = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 1.1), darkInteriorMat);
+        cav.position.set(0.82, yOff, 0);
+        g.add(cav);
+        const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.1, 0.92), tongueMat);
+        tongue.position.set(0.76, yOff + 0.08, 0);
+        g.add(tongue);
+      }
+      return g;
+    }
+    piGroup.add(createUsbStack(0.05, 0x1d4ed8));
+    piGroup.add(createUsbStack(1.75, 0x1e293b));
+
+    // Bottom Edge Ports (+Z): USB-C, 2x micro-HDMI, 3.5mm Audio Jack
+    const usbC = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.32, 0.75), portMetalMat);
+    usbC.position.set(-3.1, PCB_TOP_Y + 0.16, 2.5);
+    usbC.castShadow = true;
+    piGroup.add(usbC);
+
+    for (const hx of [-1.7, -0.45]) {
+      const hdmi = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.3, 0.75), portMetalMat);
+      hdmi.position.set(hx, PCB_TOP_Y + 0.15, 2.5);
+      hdmi.castShadow = true;
+      piGroup.add(hdmi);
+    }
+
+    const audioBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.56, 1.15),
+      new THREE.MeshStandardMaterial({ color: 0x181c22, roughness: 0.5 })
+    );
+    audioBody.position.set(1.05, PCB_TOP_Y + 0.28, 2.25);
+    audioBody.castShadow = true;
+    piGroup.add(audioBody);
+    const audioBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.25, 0.25, 0.32, 16),
+      brassMat
+    );
+    audioBarrel.rotation.x = Math.PI / 2;
+    audioBarrel.position.set(1.05, PCB_TOP_Y + 0.28, 2.92);
+    piGroup.add(audioBarrel);
+
+    // CSI Camera & DSI Display Vertical Ribbon Connectors
+    function createRibbonSlot(xPos, zPos) {
+      const g = new THREE.Group();
+      g.position.set(xPos, PCB_TOP_Y + 0.26, zPos);
+      const base = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.52, 2.1),
+        new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.5 })
+      );
+      const latch = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.12, 2.14),
+        new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 })
+      );
+      latch.position.y = 0.24;
+      g.add(base, latch);
+      return g;
+    }
+    piGroup.add(createRibbonSlot(-3.75, 0.1));
+    piGroup.add(createRibbonSlot(0.28, 1.65));
+
+    // Onboard PWR (Red) & ACT (Green) Status LEDs
+    const pwrLedMat = new THREE.MeshStandardMaterial({
+      color: 0xff3b30,
+      emissive: 0xff2222,
+      emissiveIntensity: 2.2,
+      roughness: 0.2,
+    });
+    const pwrLed = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.12), pwrLedMat);
+    pwrLed.position.set(-4.0, PCB_TOP_Y + 0.04, 1.6);
+    piGroup.add(pwrLed);
+
+    const actLedMat = new THREE.MeshStandardMaterial({
+      color: 0x22c55e,
+      emissive: 0x22c55e,
+      emissiveIntensity: 0.2,
+      roughness: 0.2,
+    });
+    const actLed = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.12), actLedMat);
+    actLed.position.set(-4.0, PCB_TOP_Y + 0.04, 1.9);
+    piGroup.add(actLed);
+
+    // 40-Pin GPIO Header (2x20, 2.54mm pitch)
+    const gpioGroup = new THREE.Group();
+    piGroup.add(gpioGroup);
+
+    const GPIO_PITCH = 0.254;
+    const GPIO_START_X = -3.48;
+    const GPIO_ROW_CENTER_Z = -2.45;
+    const PIN_HEIGHT = 0.85;
+    const PIN_TOP_Y = PCB_TOP_Y + PIN_HEIGHT;
+
+    const headerBase = new THREE.Mesh(
+      new THREE.BoxGeometry(GPIO_PITCH * 20 + 0.14, 0.26, GPIO_PITCH * 2 + 0.1),
+      new THREE.MeshStandardMaterial({ color: 0x181b20, roughness: 0.62 })
+    );
+    headerBase.position.set(GPIO_START_X + GPIO_PITCH * 9.5, PCB_TOP_Y + 0.13, GPIO_ROW_CENTER_Z);
+    headerBase.castShadow = true;
+    gpioGroup.add(headerBase);
+
+    const goldPinMat = new THREE.MeshStandardMaterial({
+      color: 0xebc34a,
+      metalness: 0.92,
+      roughness: 0.2,
+    });
+    const pinGeo = new THREE.CylinderGeometry(0.036, 0.036, PIN_HEIGHT, 10);
+    const hitGeo = new THREE.CylinderGeometry(0.115, 0.115, PIN_HEIGHT + 0.22, 8);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const glowRingGeo = new THREE.RingGeometry(0.065, 0.13, 24);
+
+    const pinWorldTops = new Map();
+    const pinHitMeshes = [];
+    const pinGlowMeshes = new Map();
+
+    for (const entry of PI_40_PINOUT) {
+      const col = Math.floor((entry.pin - 1) / 2);
+      const isEven = entry.pin % 2 === 0;
+      const localX = GPIO_START_X + col * GPIO_PITCH;
+      const localZ = GPIO_ROW_CENTER_Z + (isEven ? -GPIO_PITCH / 2 : GPIO_PITCH / 2);
+
+      const pinMesh = new THREE.Mesh(pinGeo, goldPinMat);
+      pinMesh.position.set(localX, PCB_TOP_Y + PIN_HEIGHT / 2, localZ);
+      pinMesh.castShadow = true;
+      gpioGroup.add(pinMesh);
+
+      const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+      hitMesh.position.set(localX, PCB_TOP_Y + PIN_HEIGHT / 2 + 0.05, localZ);
+      hitMesh.userData.pinEntry = entry;
+      gpioGroup.add(hitMesh);
+      pinHitMeshes.push(hitMesh);
+
+      // Base glow ring indicator on header plastic around each pin
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.0,
+      });
+      const ringMesh = new THREE.Mesh(glowRingGeo, ringMat);
+      ringMesh.rotation.x = -Math.PI / 2;
+      ringMesh.position.set(localX, PCB_TOP_Y + 0.268, localZ);
+      gpioGroup.add(ringMesh);
+      pinGlowMeshes.set(entry.pin, ringMesh);
+
+      // Store world coordinates for top of each pin
+      const worldTop = new THREE.Vector3(localX, PIN_TOP_Y, localZ).add(piGroup.position);
+      pinWorldTops.set(entry.pin, worldTop);
+    }
+
+    // Dynamic Dupont Connector Sleeves on Mapped Pins
+    const dupontGroup = new THREE.Group();
+    scene.add(dupontGroup);
+
+    const dupontConfigs = [
+      { key: "RED", collarColor: 0xe52521 },
+      { key: "YELLOW", collarColor: 0xf2b705 },
+      { key: "GREEN", collarColor: 0x16a34a },
+      { key: "GND", collarColor: 0x475569 },
+    ];
+    const dupontSockets = {};
+    for (const cfg of dupontConfigs) {
+      const socket = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.56, 0.22),
+        new THREE.MeshStandardMaterial({ color: 0x15181e, roughness: 0.55 })
+      );
+      body.position.y = 0.08;
+      body.castShadow = true;
+
+      const collar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.085, 0.085, 0.16, 12),
+        new THREE.MeshStandardMaterial({
+          color: cfg.collarColor,
+          emissive: cfg.collarColor,
+          emissiveIntensity: 0.15,
+          roughness: 0.35,
+        })
+      );
+      collar.position.y = 0.4;
+      socket.add(body, collar);
+      dupontGroup.add(socket);
+      dupontSockets[cfg.key] = { group: socket, collarMat: collar.material };
+    }
+
+    // =========================================================================
+    // 6. Build 3D Traffic Light Tower & Terminal Block
+    // =========================================================================
+    const towerGroup = new THREE.Group();
+    towerGroup.position.set(3.25, 0.08, 0.0);
+    scene.add(towerGroup);
+
+    // Weighted Anodized Base Pedestal
+    const basePedestal = new THREE.Mesh(
+      new THREE.BoxGeometry(3.2, 0.34, 3.2),
+      new THREE.MeshStandardMaterial({ color: 0x1f252e, metalness: 0.55, roughness: 0.45 })
+    );
+    basePedestal.position.y = 0.17;
+    basePedestal.castShadow = true;
+    basePedestal.receiveShadow = true;
+    towerGroup.add(basePedestal);
+
+    for (const [bx, bz] of [
+      [-1.35, -1.35],
+      [1.35, -1.35],
+      [-1.35, 1.35],
+      [1.35, 1.35],
+    ]) {
+      const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.08, 6), steelMat);
+      bolt.position.set(bx, 0.36, bz);
+      towerGroup.add(bolt);
+    }
+
+    // Terminal Block PCB + 4 Screw Terminals + 3x 220Ω Axial Resistors on Base Front
+    const terminalPcb = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.1, 1.1),
+      new THREE.MeshStandardMaterial({
+        map: createTerminalSilkscreenTexture(),
+        roughness: 0.5,
+      })
+    );
+    terminalPcb.position.set(0, 0.39, 0.92);
+    terminalPcb.receiveShadow = true;
+    towerGroup.add(terminalPcb);
+
+    const terminalWorldAnchors = {};
+    const terminalCols = [
+      { key: "RED", x: -0.9, resistor: true },
+      { key: "YELLOW", x: -0.3, resistor: true },
+      { key: "GREEN", x: 0.3, resistor: true },
+      { key: "GND", x: 0.9, resistor: false },
+    ];
+
+    const resistorBodyMat = new THREE.MeshStandardMaterial({ color: 0xd9c39e, roughness: 0.5 });
+    const termHousingMat = new THREE.MeshStandardMaterial({ color: 0x155e75, roughness: 0.45 });
+
+    for (const tc of terminalCols) {
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.36, 0.44), termHousingMat);
+      block.position.set(tc.x, 0.62, 0.85);
+      block.castShadow = true;
+      towerGroup.add(block);
+
+      const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.08, 12), brassMat);
+      screw.position.set(tc.x, 0.82, 0.85);
+      towerGroup.add(screw);
+
+      if (tc.resistor) {
+        // 220-ohm axial resistor (Red-Red-Brown-Gold) behind screw terminal
+        const resGroup = new THREE.Group();
+        resGroup.position.set(tc.x, 0.52, 0.38);
+        const body = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.075, 0.075, 0.38, 12),
+          resistorBodyMat
+        );
+        body.rotation.x = Math.PI / 2;
+        resGroup.add(body);
+
+        const bands = [
+          { z: -0.11, color: 0xdc2626 },
+          { z: -0.04, color: 0xdc2626 },
+          { z: 0.03, color: 0x78350f },
+          { z: 0.11, color: 0xd97706 },
+        ];
+        for (const b of bands) {
+          const bandMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.079, 0.079, 0.036, 12),
+            new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.4 })
+          );
+          bandMesh.rotation.x = Math.PI / 2;
+          bandMesh.position.z = b.z;
+          resGroup.add(bandMesh);
+        }
+        const lead = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.018, 0.018, 0.55, 8),
+          steelMat
+        );
+        lead.rotation.x = Math.PI / 2;
+        resGroup.add(lead);
+        towerGroup.add(resGroup);
+      }
+
+      terminalWorldAnchors[tc.key] = new THREE.Vector3(tc.x, 0.64, 1.07).add(towerGroup.position);
+    }
+
+    // Mounting Pole & Flange
+    const poleFlange = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.5, 0.22, 24),
+      steelMat
+    );
+    poleFlange.position.set(0, 0.45, -0.55);
+    towerGroup.add(poleFlange);
+
+    const poleMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.22, 3.2, 24),
+      new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.8, roughness: 0.28 })
+    );
+    poleMesh.position.set(0, 1.95, -0.55);
+    poleMesh.castShadow = true;
+    towerGroup.add(poleMesh);
+
+    // Extruded Signal Housing
+    const housingMat = new THREE.MeshStandardMaterial({
+      color: HOUSING_FINISHES.dark.color,
+      metalness: HOUSING_FINISHES.dark.metalness,
+      roughness: HOUSING_FINISHES.dark.roughness,
+    });
+
+    const housingGeo = new THREE.ExtrudeGeometry(createRoundedRectShape(2.1, 5.4, 0.34), {
+      depth: 1.45,
+      bevelEnabled: true,
+      bevelThickness: 0.06,
+      bevelSize: 0.06,
+      bevelSegments: 3,
+    });
+    housingGeo.translate(0, 0, -0.725);
+
+    const housingMesh = new THREE.Mesh(housingGeo, housingMat);
+    housingMesh.position.set(0, 5.85, -0.55);
+    housingMesh.castShadow = true;
+    housingMesh.receiveShadow = true;
+    towerGroup.add(housingMesh);
+
+    // Housing Top Cap
+    const topCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.48, 0.2, 20),
+      housingMat
+    );
+    topCap.position.set(0, 8.66, -0.55);
+    towerGroup.add(topCap);
+
+    // Three Signal Lenses + Visors + Halos
+    const lampSpecs = [
+      { signal: "RED", y: 7.45, rgb: "255, 68, 58" },
+      { signal: "YELLOW", y: 5.85, rgb: "255, 204, 42" },
+      { signal: "GREEN", y: 4.25, rgb: "40, 224, 108" },
+    ];
+
+    const bezelMat = new THREE.MeshStandardMaterial({
+      color: 0x0f1217,
+      roughness: 0.5,
+      metalness: 0.35,
+    });
+    const visorGeo = new THREE.CylinderGeometry(0.72, 0.72, 0.65, 24, 1, true, -Math.PI * 0.55, Math.PI * 1.1);
+    const visorMat = new THREE.MeshStandardMaterial({
+      color: 0x161a20,
+      metalness: 0.4,
+      roughness: 0.55,
+      side: THREE.DoubleSide,
+    });
+
+    const lamps = {};
+    for (const spec of lampSpecs) {
+      const meta = SIGNAL_META[spec.signal];
+
+      // Recessed dark bezel ring
+      const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.075, 16, 36), bezelMat);
+      bezel.position.set(0, spec.y, 0.24);
+      towerGroup.add(bezel);
+
+      // Overhanging signal visor hood
+      const visor = new THREE.Mesh(visorGeo, visorMat);
+      visor.rotation.x = Math.PI / 2;
+      visor.rotation.y = Math.PI / 2;
+      // Align open arc overhead (+Y)
+      visor.rotation.set(Math.PI / 2, 0, 0);
+      visor.position.set(0, spec.y + 0.03, 0.56);
+      visor.castShadow = true;
+      towerGroup.add(visor);
+
+      // Convex Fresnel LED lens
+      const lensGeo = new THREE.SphereGeometry(0.62, 32, 24);
+      lensGeo.scale(1, 1, 0.38);
+      const lensMat = new THREE.MeshPhysicalMaterial({
+        map: createFresnelLensTexture(meta.colorHex),
+        color: meta.offInt,
+        emissive: meta.colorInt,
+        emissiveIntensity: 0.0,
+        roughness: 0.16,
+        metalness: 0.05,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.08,
+      });
+      const lensMesh = new THREE.Mesh(lensGeo, lensMat);
+      lensMesh.position.set(0, spec.y, 0.22);
+      towerGroup.add(lensMesh);
+
+      // Additive radial glow halo sprite (only shown on the single active lamp)
+      const haloMat = new THREE.SpriteMaterial({
+        map: createHaloTexture(spec.rgb),
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+      });
+      const haloSprite = new THREE.Sprite(haloMat);
+      haloSprite.position.set(0, spec.y, 0.52);
+      haloSprite.scale.set(2.4, 2.4, 1);
+      haloSprite.visible = false;
+      towerGroup.add(haloSprite);
+
+      lamps[spec.signal] = {
+        y: spec.y,
+        mesh: lensMesh,
+        mat: lensMat,
+        halo: haloSprite,
+        haloMat,
+      };
+    }
+
+    // Active Signal PointLight illuminating housing, bench, and Raspberry Pi
+    const activePointLight = new THREE.PointLight(SIGNAL_META.RED.colorInt, 12, 16, 1.5);
+    activePointLight.position.set(towerGroup.position.x, 7.45, 1.15);
+    scene.add(activePointLight);
+
+    // =========================================================================
+    // 7. Dynamic 3D Jumper Wires & Active Signal Flow Pulses
+    // =========================================================================
+    const wireGroup = new THREE.Group();
+    scene.add(wireGroup);
+
+    const wireEntries = {};
+    const wireColors = {
+      RED: 0xe52521,
+      YELLOW: 0xf2b705,
+      GREEN: 0x16a34a,
+      GND: 0x334155,
+    };
+
+    const pulseMeshes = [];
+    const pulseGeo = new THREE.SphereGeometry(0.068, 12, 12);
+    const pulseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let i = 0; i < 3; i += 1) {
+      const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
+      pMesh.visible = false;
+      scene.add(pMesh);
+      pulseMeshes.push(pMesh);
+    }
+
+    function getMappedPinForChannel(channelKey) {
+      if (channelKey === "GND") return GND_PIN_NUMBER;
+      const bcm = state.pinMapping[channelKey];
+      return PIN_BY_BCM.get(bcm).pin;
+    }
+
+    function rebuildWiresAndDupont() {
+      // Dispose old tube geometries safely
+      for (const key of Object.keys(wireEntries)) {
+        const entry = wireEntries[key];
+        if (entry?.mesh) {
+          wireGroup.remove(entry.mesh);
+          entry.mesh.geometry.dispose();
+        }
+      }
+
+      const keys = ["RED", "YELLOW", "GREEN", "GND"];
+      const laneIndices = { RED: 0, YELLOW: 1, GREEN: 2, GND: 3 };
+
+      for (const key of keys) {
+        const idx = laneIndices[key];
+        const pinNumber = getMappedPinForChannel(key);
+        const startPos = pinWorldTops.get(pinNumber).clone();
+        const endPos = terminalWorldAnchors[key].clone();
+
+        // Position Dupont connector on top of mapped Pi pin
+        const dupont = dupontSockets[key];
+        dupont.group.position.set(startPos.x, startPos.y + 0.14, startPos.z);
+
+        const wireStart = new THREE.Vector3(startPos.x, startPos.y + 0.56, startPos.z);
+        const archX = Math.max(wireStart.x + 1.1, -0.35 + idx * 0.18);
+
+        // Route cleanly over Pi shields/USB cage (y >= 2.35) before descending into terminal gap
+        const curve = new THREE.CatmullRomCurve3([
+          wireStart,
+          new THREE.Vector3(wireStart.x + 0.15, wireStart.y + 0.65, wireStart.z + 0.18),
+          new THREE.Vector3(archX, 2.45 + idx * 0.09, -1.65 + idx * 0.24),
+          new THREE.Vector3(1.92, 1.42 + idx * 0.05, 0.15 + idx * 0.26),
+          new THREE.Vector3(endPos.x, endPos.y + 0.34, endPos.z + 0.38),
+          endPos,
+        ]);
+
+        const tubeGeo = new THREE.TubeGeometry(curve, 44, 0.042, 10, false);
+        const tubeMat = new THREE.MeshStandardMaterial({
+          color: wireColors[key],
+          roughness: 0.42,
+          metalness: 0.12,
+        });
+        const wireMesh = new THREE.Mesh(tubeGeo, tubeMat);
+        wireMesh.castShadow = true;
+        wireGroup.add(wireMesh);
+
+        wireEntries[key] = { mesh: wireMesh, mat: tubeMat, curve, pinNumber };
+      }
+    }
+
+    // =========================================================================
+    // 8. UI Elements & Interactive Controls
+    // =========================================================================
+    const hudDot = document.getElementById("hud-dot");
+    const hudPhase = document.getElementById("hud-phase");
+    const hudCountdown = document.getElementById("hud-countdown");
+    const hudActivePin = document.getElementById("hud-active-pin");
+    const hudStatePill = document.getElementById("hud-state-pill");
+    const hudProgressFill = document.getElementById("hud-progress-fill");
+
+    const sidebarStatePill = document.getElementById("sidebar-state-pill");
+    const sidebarStatus = document.getElementById("sidebar-status");
+    const sidebarTimer = document.getElementById("sidebar-timer");
+    const btnStart = document.getElementById("btn-start");
+    const btnPause = document.getElementById("btn-pause");
+    const btnReset = document.getElementById("btn-reset");
+    const pinStatusNote = document.getElementById("pin-status-note");
+    const diagramHoverInfo = document.getElementById("diagram-hover-info");
+    const gpioMiniGrid = document.getElementById("gpio-mini-grid");
+
+    const pinTooltip = document.getElementById("pin-tooltip");
+    const ttPinLabel = document.getElementById("tt-pin-label");
+    const ttPinBcm = document.getElementById("tt-pin-bcm");
+    const ttPinRole = document.getElementById("tt-pin-role");
+
+    const pinSelects = {
+      RED: document.getElementById("select-pin-RED"),
+      YELLOW: document.getElementById("select-pin-YELLOW"),
+      GREEN: document.getElementById("select-pin-GREEN"),
+    };
+
+    const durInputs = {
+      RED: document.getElementById("input-dur-RED"),
+      GREEN: document.getElementById("input-dur-GREEN"),
+      YELLOW: document.getElementById("input-dur-YELLOW"),
+    };
+
+    // Populate GPIO Pin Select Dropdowns
+    for (const sig of ["RED", "YELLOW", "GREEN"]) {
+      const sel = pinSelects[sig];
+      for (const entry of USABLE_GPIO_PINS) {
+        const opt = document.createElement("option");
+        opt.value = String(entry.bcm);
+        opt.textContent = `GPIO ${entry.bcm} (Pin ${entry.pin})`;
+        sel.appendChild(opt);
+      }
+      sel.value = String(state.pinMapping[sig]);
+
+      sel.addEventListener("change", () => {
+        const chosenBcm = Number(sel.value);
+        const prevBcm = state.pinMapping[sig];
+        if (chosenBcm === prevBcm) return;
+
+        // Swap cleanly if another signal currently uses chosenBcm
+        let swappedWith = null;
+        for (const other of ["RED", "YELLOW", "GREEN"]) {
+          if (other !== sig && state.pinMapping[other] === chosenBcm) {
+            state.pinMapping[other] = prevBcm;
+            swappedWith = other;
+          }
+        }
+        state.pinMapping[sig] = chosenBcm;
+
+        syncPinSelects();
+        rebuildWiresAndDupont();
+        renderAllUI();
+        renderMiniGpioDiagram();
+
+        const pinInfo = PIN_BY_BCM.get(chosenBcm);
+        pinStatusNote.textContent = swappedWith
+          ? `Swapped ${sig} (GPIO ${chosenBcm}) with ${swappedWith} (GPIO ${prevBcm}).`
+          : `Assigned ${sig} output to GPIO ${chosenBcm} (Pin ${pinInfo.pin}).`;
+      });
+    }
+
+    function syncPinSelects() {
+      for (const sig of ["RED", "YELLOW", "GREEN"]) {
+        pinSelects[sig].value = String(state.pinMapping[sig]);
+      }
+    }
+
+    // Build Interactive 2x20 Mini GPIO Header Diagram
+    // Row 1 (Top in HTML grid): even pins 2, 4, ..., 40
+    // Row 2 (Bottom in HTML grid): odd pins 1, 3, ..., 39
+    const miniPinButtons = new Map();
+    function buildMiniGpioDiagram() {
+      gpioMiniGrid.innerHTML = "";
+      const orderedPins = [];
+      for (let col = 0; col < 20; col += 1) orderedPins.push(2 + col * 2);
+      for (let col = 0; col < 20; col += 1) orderedPins.push(1 + col * 2);
+
+      for (const pinNum of orderedPins) {
+        const entry = PIN_BY_NUMBER.get(pinNum);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "mini-pin";
+        if (entry.kind === "5V") btn.classList.add("pin-power-5v");
+        else if (entry.kind === "3V3") btn.classList.add("pin-power-3v3");
+        else if (entry.kind === "GND") btn.classList.add("pin-gnd");
+
+        btn.title = `Pin ${entry.pin}: ${entry.label}`;
+        btn.addEventListener("mouseenter", () => {
+          const role = describePinRole(entry);
+          diagramHoverInfo.textContent = `Pin ${entry.pin} · ${entry.label}`;
+          pinStatusNote.textContent = `Pin ${entry.pin} (${entry.label}) — ${role}`;
+        });
+        btn.addEventListener("click", () => {
+          const role = describePinRole(entry);
+          diagramHoverInfo.textContent = `Pin ${entry.pin} · ${entry.label}`;
+          pinStatusNote.textContent = `Pin ${entry.pin} (${entry.label}) — ${role}`;
+        });
+        gpioMiniGrid.appendChild(btn);
+        miniPinButtons.set(pinNum, btn);
+      }
+    }
+
+    function getActiveSignal() {
+      return SIGNAL_ORDER[state.phaseIndex];
+    }
+
+    function describePinRole(entry) {
+      for (const sig of ["RED", "YELLOW", "GREEN"]) {
+        if (state.pinMapping[sig] === entry.bcm) {
+          const isHigh = sig === getActiveSignal();
+          return `Mapped to ${sig} (${isHigh ? "HIGH 3.3V" : "LOW 0.0V"})`;
+        }
+      }
+      if (entry.pin === GND_PIN_NUMBER) return "Common GND Return (0.0V)";
+      if (entry.kind === "5V") return "5.0V Power Rail";
+      if (entry.kind === "3V3") return "3.3V Power Rail";
+      if (entry.kind === "GND") return "Ground Reference (0.0V)";
+      if (entry.kind === "GPIO") return "Available GPIO Output";
+      return "Alternate / Reserved Bus Pin";
+    }
+
+    function renderMiniGpioDiagram() {
+      const activeSignal = getActiveSignal();
+      const mappedPinToSig = new Map();
+      for (const sig of ["RED", "YELLOW", "GREEN"]) {
+        mappedPinToSig.set(PIN_BY_BCM.get(state.pinMapping[sig]).pin, sig);
+      }
+
+      for (const [pinNum, btn] of miniPinButtons.entries()) {
+        btn.classList.remove(
+          "pin-mapped-RED",
+          "pin-mapped-YELLOW",
+          "pin-mapped-GREEN",
+          "pin-mapped-GND",
+          "is-high"
+        );
+        if (pinNum === GND_PIN_NUMBER) {
+          btn.classList.add("pin-mapped-GND");
+        } else if (mappedPinToSig.has(pinNum)) {
+          const sig = mappedPinToSig.get(pinNum);
+          btn.classList.add(`pin-mapped-${sig}`);
+          if (sig === activeSignal) btn.classList.add("is-high");
+        }
+      }
+    }
+
+    function updateSceneLightsAndPins(settle = 1.0) {
+      const activeSignal = getActiveSignal();
+      const glow = GLOW_PRESETS[state.glow];
+      const meta = SIGNAL_META[activeSignal];
+
+      // Strictly 1 traffic lamp illuminated at a time
+      for (const sig of SIGNAL_ORDER) {
+        const lamp = lamps[sig];
+        const sigMeta = SIGNAL_META[sig];
+        const isActive = sig === activeSignal;
+        if (isActive) {
+          lamp.mat.color.setHex(sigMeta.colorInt);
+          lamp.mat.emissiveIntensity = glow.emissive * (0.45 + 0.55 * settle);
+          lamp.halo.visible = true;
+          lamp.haloMat.opacity = 0.85 * settle;
+          lamp.halo.scale.setScalar(2.4 * glow.haloScale * (1.16 - 0.16 * settle));
+        } else {
+          lamp.mat.color.setHex(sigMeta.offInt);
+          lamp.mat.emissiveIntensity = 0.0;
+          lamp.halo.visible = false;
+          lamp.haloMat.opacity = 0.0;
+        }
+      }
+
+      // Move single PointLight to active lens
+      activePointLight.color.setHex(meta.colorInt);
+      activePointLight.position.y = lamps[activeSignal].y;
+      const themeMult = state.theme === "night" ? 1.35 : 0.72;
+      activePointLight.intensity = glow.pointIntensity * themeMult * (0.45 + 0.55 * settle);
+
+      // Update GPIO header pin rings, Dupont collars, and wire pulses
+      for (const [, ringMesh] of pinGlowMeshes.entries()) {
+        ringMesh.material.opacity = 0.0;
+      }
+
+      for (const sig of ["RED", "YELLOW", "GREEN"]) {
+        const isHigh = sig === activeSignal;
+        const pinNum = getMappedPinForChannel(sig);
+        const ring = pinGlowMeshes.get(pinNum);
+        if (ring) {
+          ring.material.color.setHex(SIGNAL_META[sig].colorInt);
+          ring.material.opacity = isHigh ? 0.95 : 0.28;
+        }
+        dupontSockets[sig].collarMat.emissiveIntensity = isHigh ? 1.8 : 0.12;
+      }
+      const gndRing = pinGlowMeshes.get(GND_PIN_NUMBER);
+      if (gndRing) {
+        gndRing.material.color.setHex(0x94a3b8);
+        gndRing.material.opacity = 0.4;
+      }
+    }
+
+    function renderAllUI() {
+      const activeSignal = getActiveSignal();
+      const meta = SIGNAL_META[activeSignal];
+      const bcm = state.pinMapping[activeSignal];
+      const pinInfo = PIN_BY_BCM.get(bcm);
+      const dur = state.durations[activeSignal];
+      const unit = state.secondsLeft === 1 ? "second" : "seconds";
+
+      const stateText = state.running ? "Running" : state.hasStarted ? "Paused" : "Ready";
+      for (const pill of [hudStatePill, sidebarStatePill]) {
+        pill.textContent = stateText;
+        pill.classList.remove("is-running", "is-paused");
+        if (state.running) pill.classList.add("is-running");
+        else if (state.hasStarted) pill.classList.add("is-paused");
+      }
+
+      hudDot.style.background = meta.colorHex;
+      hudDot.style.boxShadow = `0 0 10px ${meta.colorHex}`;
+      hudPhase.textContent = `${activeSignal} – ${meta.message}`;
+      hudCountdown.textContent = `${state.secondsLeft} ${unit} remaining`;
+      hudActivePin.textContent = `GPIO ${bcm} · Pin ${pinInfo.pin}`;
+      hudProgressFill.style.backgroundColor = meta.colorHex;
+      hudProgressFill.style.width = `${Math.max(0, Math.min(100, (state.secondsLeft / dur) * 100))}%`;
+
+      sidebarStatus.textContent = `${activeSignal} – ${meta.message}`;
+      sidebarStatus.style.color = activeSignal === "YELLOW" && state.theme === "daylight" ? "#a67600" : meta.colorHex;
+      sidebarTimer.textContent = `${state.secondsLeft} ${unit} remaining`;
+
+      for (const sig of SIGNAL_ORDER) {
+        const el = document.getElementById(`seq-${sig}`);
+        el.className = "seq-step";
+        if (sig === activeSignal) el.classList.add(`is-active-${sig}`);
+      }
+
+      btnStart.disabled = state.running;
+      btnPause.disabled = !state.running;
+
+      // Per-channel GPIO telemetry rows
+      for (const sig of ["RED", "YELLOW", "GREEN"]) {
+        const isHigh = sig === activeSignal;
+        const ledEl = document.getElementById(`led-${sig}`);
+        const logicEl = document.getElementById(`logic-${sig}`);
+        ledEl.className = "channel-led";
+        if (isHigh) ledEl.classList.add(`on-${sig}`);
+        logicEl.textContent = isHigh ? "HIGH 3.3V" : "LOW 0.0V";
+        logicEl.classList.toggle("is-high", isHigh);
+      }
+
+      renderMiniGpioDiagram();
+      updateSceneLightsAndPins(state.lampSettleProgress);
+    }
+
+    // =========================================================================
+    // 9. Traffic Light Timer Lifecycle (Start / Pause / Reset)
+    // =========================================================================
+    function cancelTickTimer() {
+      if (state.tickTimerId !== null) {
+        window.clearTimeout(state.tickTimerId);
+        state.tickTimerId = null;
+      }
+    }
+
+    function scheduleTick() {
+      cancelTickTimer();
+      if (!state.running) return;
+      state.tickTimerId = window.setTimeout(handleTick, 1000);
+    }
+
+    function handleTick() {
+      state.tickTimerId = null;
+      if (!state.running) return;
+
+      state.actPulseUntil = performance.now() + 180;
+      state.secondsLeft -= 1;
+
+      if (state.secondsLeft <= 0) {
+        state.phaseIndex = (state.phaseIndex + 1) % SIGNAL_ORDER.length;
+        const nextSignal = getActiveSignal();
+        state.secondsLeft = state.durations[nextSignal];
+        state.lastPhaseChangeAt = performance.now();
+        state.lampSettleProgress = 0.0;
+      }
+
+      renderAllUI();
+      scheduleTick();
+    }
+
+    function startSimulation() {
+      if (state.running) return;
+      state.running = true;
+      state.hasStarted = true;
+      renderAllUI();
+      scheduleTick();
+    }
+
+    function pauseSimulation() {
+      state.running = false;
+      cancelTickTimer();
+      renderAllUI();
+    }
+
+    function resetSimulation() {
+      state.running = false;
+      state.hasStarted = false;
+      cancelTickTimer();
+      state.phaseIndex = 0;
+      state.secondsLeft = state.durations.RED;
+      state.lampSettleProgress = 1.0;
+      renderAllUI();
+    }
+
+    btnStart.addEventListener("click", startSimulation);
+    btnPause.addEventListener("click", pauseSimulation);
+    btnReset.addEventListener("click", resetSimulation);
+
+    document.getElementById("btn-reset-pins").addEventListener("click", () => {
+      state.pinMapping = { RED: 17, YELLOW: 27, GREEN: 22 };
+      syncPinSelects();
+      rebuildWiresAndDupont();
+      renderAllUI();
+      pinStatusNote.textContent = "Restored default GPIO mapping: RED 17, YELLOW 27, GREEN 22.";
+    });
+
+    // Duration Customization
+    for (const sig of SIGNAL_ORDER) {
+      durInputs[sig].addEventListener("change", () => {
+        const parsed = Number.parseInt(durInputs[sig].value, 10);
+        const clamped = Number.isFinite(parsed) ? Math.max(1, Math.min(60, parsed)) : state.durations[sig];
+        durInputs[sig].value = String(clamped);
+        state.durations[sig] = clamped;
+
+        if (getActiveSignal() === sig) {
+          if (!state.running && !state.hasStarted) {
+            state.secondsLeft = clamped;
+          } else if (state.secondsLeft > clamped) {
+            state.secondsLeft = clamped;
+          }
+        }
+        renderAllUI();
+      });
+    }
+
+    document.getElementById("btn-reset-timings").addEventListener("click", () => {
+      state.durations = { RED: 5, GREEN: 5, YELLOW: 2 };
+      for (const sig of SIGNAL_ORDER) {
+        durInputs[sig].value = String(state.durations[sig]);
+      }
+      if (!state.running && !state.hasStarted) {
+        state.secondsLeft = state.durations[getActiveSignal()];
+      } else {
+        const cur = getActiveSignal();
+        if (state.secondsLeft > state.durations[cur]) {
+          state.secondsLeft = state.durations[cur];
+        }
+      }
+      renderAllUI();
+    });
+
+    // Housing Finish Customization
+    document.querySelectorAll("#group-finish .seg-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const finishKey = btn.dataset.finish;
+        state.finish = finishKey;
+        const spec = HOUSING_FINISHES[finishKey];
+        housingMat.color.setHex(spec.color);
+        housingMat.metalness = spec.metalness;
+        housingMat.roughness = spec.roughness;
+
+        document.querySelectorAll("#group-finish .seg-btn").forEach((b) =>
+          b.classList.toggle("is-active", b === btn)
+        );
+      });
+    });
+
+    // Lens Glow Customization
+    document.querySelectorAll("#group-glow .seg-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.glow = btn.dataset.glow;
+        document.querySelectorAll("#group-glow .seg-btn").forEach((b) =>
+          b.classList.toggle("is-active", b === btn)
+        );
+        updateSceneLightsAndPins(state.lampSettleProgress);
+      });
+    });
+
+    // Bench Lighting / Theme Customization
+    function applyTheme(themeKey) {
+      state.theme = themeKey;
+      document.body.dataset.theme = themeKey;
+      const preset = THEME_PRESETS[themeKey];
+      scene.background.setHex(preset.bg);
+      scene.fog.color.setHex(preset.fog);
+      ambientLight.intensity = preset.ambient;
+      keyLight.intensity = preset.keyIntensity;
+      fillLight.intensity = preset.fillIntensity;
+      scene.environmentIntensity = preset.envIntensity;
+      renderer.toneMappingExposure = preset.exposure;
+
+      document.querySelectorAll("#group-theme .seg-btn").forEach((b) =>
+        b.classList.toggle("is-active", b.dataset.theme === themeKey)
+      );
+      renderAllUI();
+    }
+
+    document.querySelectorAll("#group-theme .seg-btn").forEach((btn) => {
+      btn.addEventListener("click", () => applyTheme(btn.dataset.theme));
+    });
+
+    // =========================================================================
+    // 10. Camera Presets & Interactive Pin Raycasting
+    // =========================================================================
+    const CAMERA_PRESETS = {
+      overview: { pos: new THREE.Vector3(-0.8, 10.6, 21.8), target: new THREE.Vector3(-1.0, 3.8, 0.0) },
+      pi: { pos: new THREE.Vector3(-2.8, 5.8, 4.4), target: new THREE.Vector3(-3.2, 0.8, -0.5) },
+      light: { pos: new THREE.Vector3(3.25, 5.4, 11.2), target: new THREE.Vector3(3.25, 4.8, 0.0) },
+      top: { pos: new THREE.Vector3(-0.8, 16.5, 1.0), target: new THREE.Vector3(-0.8, 0.5, 0.1) },
+    };
+
+    let camAnim = null;
+
+    function flyCameraTo(presetKey) {
+      const preset = CAMERA_PRESETS[presetKey];
+      if (!preset) return;
+      camAnim = {
+        startPos: camera.position.clone(),
+        startTarget: controls.target.clone(),
+        endPos: preset.pos.clone(),
+        endTarget: preset.target.clone(),
+        startTime: performance.now(),
+        duration: 480,
+      };
+      document.querySelectorAll(".cam-btn[data-cam]").forEach((b) =>
+        b.classList.toggle("is-active", b.dataset.cam === presetKey)
+      );
+    }
+
+    document.querySelectorAll(".cam-btn[data-cam]").forEach((btn) => {
+      btn.addEventListener("click", () => flyCameraTo(btn.dataset.cam));
+    });
+
+    document.getElementById("btn-reset-view").addEventListener("click", () => {
+      state.autoOrbit = false;
+      controls.autoRotate = false;
+      const autoBtn = document.getElementById("btn-auto-orbit");
+      autoBtn.classList.remove("is-active");
+      autoBtn.setAttribute("aria-pressed", "false");
+      flyCameraTo("overview");
+    });
+
+    const autoOrbitBtn = document.getElementById("btn-auto-orbit");
+    autoOrbitBtn.addEventListener("click", () => {
+      state.autoOrbit = !state.autoOrbit;
+      controls.autoRotate = state.autoOrbit;
+      controls.autoRotateSpeed = 1.15;
+      autoOrbitBtn.classList.toggle("is-active", state.autoOrbit);
+      autoOrbitBtn.setAttribute("aria-pressed", String(state.autoOrbit));
+    });
+
+    controls.addEventListener("start", () => {
+      // Cancel preset animation immediately so user orbit never fights controls
+      camAnim = null;
+    });
+
+    // Hover Raycasting for 40-Pin GPIO Header
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
+    let hoveredPinEntry = null;
+
+    canvasEl.addEventListener("pointermove", (event) => {
+      const rect = canvasEl.getBoundingClientRect();
+      pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointerNdc, camera);
+      const hits = raycaster.intersectObjects(pinHitMeshes, false);
+
+      if (hits.length > 0) {
+        hoveredPinEntry = hits[0].object.userData.pinEntry;
+        canvasEl.style.cursor = "pointer";
+        ttPinLabel.textContent = `Pin ${hoveredPinEntry.pin}`;
+        ttPinBcm.textContent = hoveredPinEntry.label;
+        ttPinRole.textContent = describePinRole(hoveredPinEntry);
+        pinTooltip.style.display = "block";
+        pinTooltip.style.left = `${Math.min(rect.width - 170, event.clientX - rect.left + 14)}px`;
+        pinTooltip.style.top = `${Math.max(12, event.clientY - rect.top - 12)}px`;
+      } else {
+        hoveredPinEntry = null;
+        canvasEl.style.cursor = "grab";
+        pinTooltip.style.display = "none";
+      }
+    });
+
+    canvasEl.addEventListener("pointerleave", () => {
+      hoveredPinEntry = null;
+      pinTooltip.style.display = "none";
+    });
+
+    // =========================================================================
+    // 11. Resize Observer & Render Loop
+    // =========================================================================
+    function handleResize() {
+      const w = viewportPane.clientWidth;
+      const h = viewportPane.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+    }
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(viewportPane);
+    handleResize();
+
+    let animFrameId = null;
+
+    function animate(now) {
+      animFrameId = window.requestAnimationFrame(animate);
+
+      // Camera preset cubic ease-out transition
+      if (camAnim) {
+        const elapsed = now - camAnim.startTime;
+        const t = Math.min(1, elapsed / camAnim.duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, eased);
+        controls.target.lerpVectors(camAnim.startTarget, camAnim.endTarget, eased);
+        if (t >= 1) camAnim = null;
+      }
+
+      // Brief ~200 ms lamp activation settle
+      if (state.lampSettleProgress < 1.0) {
+        const t = Math.min(1.0, (now - state.lastPhaseChangeAt) / 200);
+        state.lampSettleProgress = 1 - Math.pow(1 - t, 2);
+        updateSceneLightsAndPins(state.lampSettleProgress);
+      }
+
+      // Onboard ACT LED pulse on each 1s tick
+      actLedMat.emissiveIntensity = now < state.actPulseUntil ? 2.6 : 0.15;
+
+      // Signal flow pulses gliding along active jumper wire while running
+      const activeSignal = getActiveSignal();
+      const activeCurve = wireEntries[activeSignal]?.curve;
+      if (state.running && activeCurve) {
+        pulseMat.color.setHex(SIGNAL_META[activeSignal].colorInt);
+        const baseT = (now * 0.00085) % 1;
+        for (let i = 0; i < pulseMeshes.length; i += 1) {
+          const u = (baseT + i / pulseMeshes.length) % 1;
+          pulseMeshes[i].position.copy(activeCurve.getPointAt(u));
+          pulseMeshes[i].visible = true;
+        }
+      } else {
+        for (let i = 0; i < pulseMeshes.length; i += 1) {
+          pulseMeshes[i].visible = false;
+        }
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Initialize everything cleanly
+    buildMiniGpioDiagram();
+    rebuildWiresAndDupont();
+    renderAllUI();
+    animFrameId = window.requestAnimationFrame(animate);
+
+    // Expose read-only inspection helper for verification
+    window.__trafficSimDebug = () => ({
+      phase: getActiveSignal(),
+      secondsLeft: state.secondsLeft,
+      running: state.running,
+      pinMapping: { ...state.pinMapping },
+      durations: { ...state.durations },
+      finish: state.finish,
+      theme: state.theme,
+      glow: state.glow,
+      pinCount: PI_40_PINOUT.length,
+      wireCount: Object.keys(wireEntries).length,
+    });
+
+    window.addEventListener("beforeunload", () => {
+      cancelTickTimer();
+      if (animFrameId !== null) window.cancelAnimationFrame(animFrameId);
+      resizeObserver.disconnect();
+      pmremGenerator.dispose();
+      roomEnvTexture.dispose();
+      renderer.dispose();
+    });
+  </script>
+</body>
+</html>
